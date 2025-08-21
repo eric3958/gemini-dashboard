@@ -6,6 +6,8 @@ export const useVideoData = (data) => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedChannel, setSelectedChannel] = useState('all');
   const [durationFilter, setDurationFilter] = useState('all');
+  const [customDurationMin, setCustomDurationMin] = useState('');
+  const [customDurationMax, setCustomDurationMax] = useState('');
   const [sortBy, setSortBy] = useState('opportunity_score');
   const [sortOrder, setSortOrder] = useState('desc');
   
@@ -81,7 +83,21 @@ export const useVideoData = (data) => {
     }
 
     // 时长筛选
-    if (durationFilter !== 'all') {
+    if (durationFilter === 'custom') {
+      // 自定义时长筛选
+      if (customDurationMin || customDurationMax) {
+        filtered = filtered.filter(item => {
+          const durationSeconds = parseInt(item.durationSeconds) || 0;
+          const durationMinutes = durationSeconds / 60;
+          
+          const minMinutes = customDurationMin ? parseFloat(customDurationMin) : 0;
+          const maxMinutes = customDurationMax ? parseFloat(customDurationMax) : Infinity;
+          
+          return durationMinutes >= minMinutes && durationMinutes <= maxMinutes;
+        });
+      }
+    } else if (durationFilter !== 'all') {
+      // 预设时长筛选
       filtered = filtered.filter(item => {
         const durationCategory = String(item.durationCategory || '').trim();
         return durationCategory === durationFilter;
@@ -114,7 +130,7 @@ export const useVideoData = (data) => {
     });
 
     return filtered;
-  }, [data, selectedCategory, selectedChannel, durationFilter, sortBy, sortOrder]);
+  }, [data, selectedCategory, selectedChannel, durationFilter, customDurationMin, customDurationMax, sortBy, sortOrder]);
 
   // 分页数据
   const paginatedData = useMemo(() => {
@@ -167,6 +183,16 @@ export const useVideoData = (data) => {
 
   const setDurationFilterWithReset = (duration) => {
     setDurationFilter(duration);
+    setCurrentPage(1);
+  };
+
+  const setCustomDurationMinWithReset = (min) => {
+    setCustomDurationMin(min);
+    setCurrentPage(1);
+  };
+
+  const setCustomDurationMaxWithReset = (max) => {
+    setCustomDurationMax(max);
     setCurrentPage(1);
   };
 
@@ -223,6 +249,10 @@ export const useVideoData = (data) => {
     setSelectedChannel: setSelectedChannelWithReset,
     durationFilter,
     setDurationFilter: setDurationFilterWithReset,
+    customDurationMin,
+    setCustomDurationMin: setCustomDurationMinWithReset,
+    customDurationMax,
+    setCustomDurationMax: setCustomDurationMaxWithReset,
     sortBy,
     setSortBy: setSortByWithReset,
     sortOrder,

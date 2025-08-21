@@ -19,6 +19,10 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
     setSelectedChannel,
     durationFilter,
     setDurationFilter,
+    customDurationMin,
+    setCustomDurationMin,
+    customDurationMax,
+    setCustomDurationMax,
     sortBy,
     setSortBy,
     sortOrder,
@@ -69,6 +73,10 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
             setSelectedChannel={setSelectedChannel}
             durationFilter={durationFilter}
             setDurationFilter={setDurationFilter}
+            customDurationMin={customDurationMin}
+            setCustomDurationMin={setCustomDurationMin}
+            customDurationMax={customDurationMax}
+            setCustomDurationMax={setCustomDurationMax}
             sortBy={sortBy}
             setSortBy={setSortBy}
             sortOrder={sortOrder}

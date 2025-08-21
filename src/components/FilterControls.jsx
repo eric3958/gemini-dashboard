@@ -15,6 +15,10 @@ const FilterControls = ({
   setSelectedChannel,
   durationFilter,
   setDurationFilter,
+  customDurationMin,
+  setCustomDurationMin,
+  customDurationMax,
+  setCustomDurationMax,
   sortBy,
   setSortBy,
   sortOrder,
@@ -66,12 +70,51 @@ const FilterControls = ({
             onChange={(e) => setDurationFilter(e.target.value)}
             style={styles.select}
           >
-            {DURATION_FILTER_OPTIONS.map(option => (
+            <option value="all">全部時長</option>
+            <option value="custom">自定義範圍</option>
+            {DURATION_FILTER_OPTIONS.slice(1).map(option => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
+          
+          {durationFilter === 'custom' && (
+            <div style={{
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              marginTop: '8px',
+              flexWrap: 'wrap'
+            }}>
+              <input
+                type="number"
+                placeholder="最小分鐘"
+                value={customDurationMin}
+                onChange={(e) => setCustomDurationMin(e.target.value)}
+                style={{
+                  ...styles.select,
+                  width: '80px',
+                  fontSize: '14px'
+                }}
+                min="0"
+              />
+              <span style={{color: '#6b7280', fontSize: '14px'}}>至</span>
+              <input
+                type="number"
+                placeholder="最大分鐘"
+                value={customDurationMax}
+                onChange={(e) => setCustomDurationMax(e.target.value)}
+                style={{
+                  ...styles.select,
+                  width: '80px',
+                  fontSize: '14px'
+                }}
+                min="0"
+              />
+              <span style={{color: '#6b7280', fontSize: '14px'}}>分鐘</span>
+            </div>
+          )}
         </div>
 
         <div style={styles.filterGroup}>
