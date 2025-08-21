@@ -71,7 +71,7 @@ const ChartsAnalysis = ({ data, filteredData, sortBy, sortOrder }) => {
       
       return {
         x: index + 1, // 影片序列（從1開始）
-        y: views,     // 觀看數
+        y: Math.max(views, 1), // 確保觀看數至少為1（避免log(0)問題）
         z: Math.max(interactionRate * 100, 10), // 點大小，最小為10
         title: item.title || '',
         videoUrl: item.videoUrl || '',
@@ -200,14 +200,16 @@ const ChartsAnalysis = ({ data, filteredData, sortBy, sortOrder }) => {
                 type="number" 
                 dataKey="x" 
                 name="影片序列"
-                domain={[1, 5000]}
-                allowDataOverflow={true}
+                domain={[1, scatterData.length]}
+                allowDataOverflow={false}
                 stroke="#6b7280"
               />
               <YAxis 
                 type="number" 
                 dataKey="y" 
                 name="觀看數"
+                scale="log"
+                domain={[1, 'dataMax']}
                 tickFormatter={formatNumber}
                 stroke="#6b7280"
               />
