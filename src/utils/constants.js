@@ -54,6 +54,7 @@ export const SORT_OPTIONS = [
   { value: 'commentCount', label: '留言數' },
   { value: 'explosion', label: '爆紅潛力' },
   { value: 'channelSubscribers', label: '頻道訂閱數' },
+  { value: 'channelTotalViews', label: '頻道總觀看數' },
   { value: 'publishedAt', label: '發布日期' }
 ];
 
