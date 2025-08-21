@@ -27,6 +27,10 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
     setSortBy,
     sortOrder,
     setSortOrder,
+    customSortMin,
+    setCustomSortMin,
+    customSortMax,
+    setCustomSortMax,
     categories,
     channels,
     currentPage,
@@ -81,6 +85,10 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
             setSortBy={setSortBy}
             sortOrder={sortOrder}
             setSortOrder={setSortOrder}
+            customSortMin={customSortMin}
+            setCustomSortMin={setCustomSortMin}
+            customSortMax={customSortMax}
+            setCustomSortMax={setCustomSortMax}
           />
         )}
 

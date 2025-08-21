@@ -10,6 +10,8 @@ export const useVideoData = (data) => {
   const [customDurationMax, setCustomDurationMax] = useState('');
   const [sortBy, setSortBy] = useState('opportunity_score');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [customSortMin, setCustomSortMin] = useState('');
+  const [customSortMax, setCustomSortMax] = useState('');
   
   // 分页相关状态
   const [currentPage, setCurrentPage] = useState(1);
@@ -105,32 +107,72 @@ export const useVideoData = (data) => {
     }
 
     // 排序邏輯
-    filtered.sort((a, b) => {
-      let aVal, bVal;
+    if (sortOrder === 'custom' && (customSortMin || customSortMax)) {
+      // 自定义范围排序 - 先筛选出符合范围的数据
+      const minVal = customSortMin ? parseFloat(customSortMin) : -Infinity;
+      const maxVal = customSortMax ? parseFloat(customSortMax) : Infinity;
       
-      if (['opportunity_score', 'explosion', 'newbie', 'momentum', 'engagement', 'technical_quality', 'channel_authority'].includes(sortBy)) {
-        aVal = parseFloat(a[sortBy]) || 0;
-        bVal = parseFloat(b[sortBy]) || 0;
-      } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews', 'channelVideoCount', 'durationSeconds'].includes(sortBy)) {
-        aVal = parseInt(a[sortBy]) || 0;
-        bVal = parseInt(b[sortBy]) || 0;
-      } else if (sortBy === 'publishedAt') {
-        aVal = a[sortBy] ? new Date(a[sortBy]).getTime() : 0;
-        bVal = b[sortBy] ? new Date(b[sortBy]).getTime() : 0;
-      } else {
-        aVal = String(a[sortBy] || '').toLowerCase();
-        bVal = String(b[sortBy] || '').toLowerCase();
-      }
+      filtered = filtered.filter(item => {
+        let val;
+        if (['opportunity_score', 'explosion', 'newbie', 'momentum', 'engagement', 'technical_quality', 'channel_authority'].includes(sortBy)) {
+          val = parseFloat(item[sortBy]) || 0;
+        } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews', 'channelVideoCount', 'durationSeconds'].includes(sortBy)) {
+          val = parseInt(item[sortBy]) || 0;
+        } else if (sortBy === 'publishedAt') {
+          val = item[sortBy] ? new Date(item[sortBy]).getTime() : 0;
+        } else {
+          return true; // 对于字符串类型不做范围筛选
+        }
+        return val >= minVal && val <= maxVal;
+      });
       
-      if (sortOrder === 'desc') {
+      // 自定义范围内按降序排列
+      filtered.sort((a, b) => {
+        let aVal, bVal;
+        if (['opportunity_score', 'explosion', 'newbie', 'momentum', 'engagement', 'technical_quality', 'channel_authority'].includes(sortBy)) {
+          aVal = parseFloat(a[sortBy]) || 0;
+          bVal = parseFloat(b[sortBy]) || 0;
+        } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews', 'channelVideoCount', 'durationSeconds'].includes(sortBy)) {
+          aVal = parseInt(a[sortBy]) || 0;
+          bVal = parseInt(b[sortBy]) || 0;
+        } else if (sortBy === 'publishedAt') {
+          aVal = a[sortBy] ? new Date(a[sortBy]).getTime() : 0;
+          bVal = b[sortBy] ? new Date(b[sortBy]).getTime() : 0;
+        } else {
+          aVal = String(a[sortBy] || '').toLowerCase();
+          bVal = String(b[sortBy] || '').toLowerCase();
+        }
         return typeof aVal === 'number' ? bVal - aVal : bVal.localeCompare(aVal);
-      } else {
-        return typeof aVal === 'number' ? aVal - bVal : aVal.localeCompare(bVal);
-      }
-    });
+      });
+    } else {
+      // 常规排序
+      filtered.sort((a, b) => {
+        let aVal, bVal;
+        
+        if (['opportunity_score', 'explosion', 'newbie', 'momentum', 'engagement', 'technical_quality', 'channel_authority'].includes(sortBy)) {
+          aVal = parseFloat(a[sortBy]) || 0;
+          bVal = parseFloat(b[sortBy]) || 0;
+        } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews', 'channelVideoCount', 'durationSeconds'].includes(sortBy)) {
+          aVal = parseInt(a[sortBy]) || 0;
+          bVal = parseInt(b[sortBy]) || 0;
+        } else if (sortBy === 'publishedAt') {
+          aVal = a[sortBy] ? new Date(a[sortBy]).getTime() : 0;
+          bVal = b[sortBy] ? new Date(b[sortBy]).getTime() : 0;
+        } else {
+          aVal = String(a[sortBy] || '').toLowerCase();
+          bVal = String(b[sortBy] || '').toLowerCase();
+        }
+        
+        if (sortOrder === 'desc') {
+          return typeof aVal === 'number' ? bVal - aVal : bVal.localeCompare(aVal);
+        } else {
+          return typeof aVal === 'number' ? aVal - bVal : aVal.localeCompare(bVal);
+        }
+      });
+    }
 
     return filtered;
-  }, [data, selectedCategory, selectedChannel, durationFilter, customDurationMin, customDurationMax, sortBy, sortOrder]);
+  }, [data, selectedCategory, selectedChannel, durationFilter, customDurationMin, customDurationMax, sortBy, sortOrder, customSortMin, customSortMax]);
 
   // 分页数据
   const paginatedData = useMemo(() => {
@@ -196,6 +238,16 @@ export const useVideoData = (data) => {
     setCurrentPage(1);
   };
 
+  const setCustomSortMinWithReset = (min) => {
+    setCustomSortMin(min);
+    setCurrentPage(1);
+  };
+
+  const setCustomSortMaxWithReset = (max) => {
+    setCustomSortMax(max);
+    setCurrentPage(1);
+  };
+
   const setSortByWithReset = (sort) => {
     setSortBy(sort);
     setCurrentPage(1);
@@ -257,6 +309,10 @@ export const useVideoData = (data) => {
     setSortBy: setSortByWithReset,
     sortOrder,
     setSortOrder: setSortOrderWithReset,
+    customSortMin,
+    setCustomSortMin: setCustomSortMinWithReset,
+    customSortMax,
+    setCustomSortMax: setCustomSortMaxWithReset,
     
     // 分页状态和操作
     currentPage,

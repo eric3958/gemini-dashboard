@@ -22,7 +22,11 @@ const FilterControls = ({
   sortBy,
   setSortBy,
   sortOrder,
-  setSortOrder
+  setSortOrder,
+  customSortMin,
+  setCustomSortMin,
+  customSortMax,
+  setCustomSortMax
 }) => {
   return (
     <div style={styles.card}>
@@ -141,7 +145,42 @@ const FilterControls = ({
           >
             <option value="desc">由高到低</option>
             <option value="asc">由低到高</option>
+            <option value="custom">自定義範圍</option>
           </select>
+          
+          {sortOrder === 'custom' && (
+            <div style={{
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              marginTop: '8px',
+              flexWrap: 'wrap'
+            }}>
+              <input
+                type="number"
+                placeholder="最小值"
+                value={customSortMin}
+                onChange={(e) => setCustomSortMin(e.target.value)}
+                style={{
+                  ...styles.select,
+                  width: '80px',
+                  fontSize: '14px'
+                }}
+              />
+              <span style={{color: '#6b7280', fontSize: '14px'}}>至</span>
+              <input
+                type="number"
+                placeholder="最大值"
+                value={customSortMax}
+                onChange={(e) => setCustomSortMax(e.target.value)}
+                style={{
+                  ...styles.select,
+                  width: '80px',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
