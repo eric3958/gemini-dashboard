@@ -180,9 +180,11 @@ export const useVideoData = (data) => {
     setCurrentPage(1);
   };
 
-  // 統計計算（基于所有数据，不是分页数据）
+  // 統計計算（基于完整的筛选数据，不是原始数据）
   const statistics = useMemo(() => {
-    if (data.length === 0) return {
+    const dataForStats = filteredAndSortedData; // 使用筛选后的数据计算统计
+    
+    if (dataForStats.length === 0) return {
       totalVideos: 0,
       totalViews: 0,
       avgViews: 0,
@@ -190,28 +192,28 @@ export const useVideoData = (data) => {
       topScore: 0
     };
 
-    const totalViews = data.reduce((sum, item) => {
+    const totalViews = dataForStats.reduce((sum, item) => {
       const views = parseInt(item.viewCount) || 0;
       return sum + views;
     }, 0);
     
-    const validScores = data.map(item => {
+    const validScores = dataForStats.map(item => {
       const score = parseFloat(item.opportunity_score) || 0;
       return score;
     }).filter(score => score > 0);
     
     const avgOpportunityScore = validScores.length > 0 ? 
       validScores.reduce((sum, score) => sum + score, 0) / validScores.length : 0;
-    const avgViews = data.length > 0 ? totalViews / data.length : 0;
+    const avgViews = dataForStats.length > 0 ? totalViews / dataForStats.length : 0;
     
     return {
-      totalVideos: data.length,
+      totalVideos: dataForStats.length,
       totalViews,
       avgViews: Math.round(avgViews),
       avgOpportunityScore: avgOpportunityScore.toFixed(1),
       topScore: validScores.length > 0 ? Math.max(...validScores).toFixed(1) : 0
     };
-  }, [data]);
+  }, [filteredAndSortedData]);
 
   return {
     // 篩選狀態（带重置功能）
@@ -236,8 +238,8 @@ export const useVideoData = (data) => {
     // 處理後的數據
     categories,
     channels,
-    filteredData: paginatedData, // 返回分页后的数据
-    allFilteredData: filteredAndSortedData, // 返回所有筛选后的数据（用于统计）
+    filteredData: paginatedData, // 返回分页后的数据（给表格用）
+    completeFilteredData: filteredAndSortedData, // 返回完整的筛选数据（给图表用）
     statistics
   };
 };

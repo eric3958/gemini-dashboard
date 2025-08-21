@@ -1,5 +1,5 @@
 // YouTubeVideoAnalyzer.jsx
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { styles } from '../styles/styles.js';
 import { useVideoData } from '../hooks/useVideoData.js';
 import ChartsAnalysis from './ChartsAnalysis.jsx';
@@ -30,7 +30,8 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
     paginationInfo,
     handlePageChange,
     handlePageSizeChange,
-    filteredData,
+    filteredData, // 分頁後的資料（給 VideoTable 用）
+    completeFilteredData, // 完整的篩選資料（給圖表用）
     statistics
   } = useVideoData(data);
 
@@ -40,7 +41,7 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
         {/* 頁首和文件上傳 */}
         <Header 
           data={data}
-          filteredData={filteredData}
+          filteredData={completeFilteredData} // 使用完整篩選資料
           handleFileUpload={handleFileUpload}
           isLoading={isLoading}
         />
@@ -51,7 +52,9 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
         {data.length > 0 && (
           <ChartsAnalysis 
             data={data}
-            filteredData={filteredData}
+            filteredData={completeFilteredData} // 使用完整的篩選資料
+            sortBy={sortBy}
+            sortOrder={sortOrder}
           />
         )}
 
@@ -75,7 +78,7 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
 
         {/* 數據表格 */}
         <VideoTable 
-          filteredData={filteredData}
+          filteredData={filteredData} // 分頁後的資料
           totalDataLength={data.length}
           paginationInfo={paginationInfo}
           onPageChange={handlePageChange}
