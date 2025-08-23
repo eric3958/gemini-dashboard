@@ -1,8 +1,9 @@
-// useVideoData.js - 支持分页版本
-import { useState, useMemo } from 'react';
-import { CATEGORY_MAPPING } from '../utils/constants.js';
+// useVideoData.js - 完整版本，包含二次篩選邏輯
+import { useState, useMemo, useEffect } from 'react';
+import { CATEGORY_MAPPING, DURATION_LABELS } from '../utils/constants.js';
 
 export const useVideoData = (data) => {
+  // 原有的篩選狀態
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedChannel, setSelectedChannel] = useState('all');
   const [durationFilter, setDurationFilter] = useState('all');
@@ -13,319 +14,370 @@ export const useVideoData = (data) => {
   const [customSortMin, setCustomSortMin] = useState('');
   const [customSortMax, setCustomSortMax] = useState('');
   
-  // 分页相关状态
+  // 分頁狀態
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  // 分類處理邏輯
-  const categories = useMemo(() => {
-    if (data.length === 0) return [];
+  // 新增：二次篩選狀態
+  const [secondaryFilters, setSecondaryFilters] = useState({
+    channelSubscribersMin: '',
+    channelSubscribersMax: '',
+    channelTotalViewsMin: '',
+    channelTotalViewsMax: '',
+    channelVideoCountMin: '',
+    channelVideoCountMax: '',
+    viewCountMin: '',
+    viewCountMax: '',
+    likeCountMin: '',
+    likeCountMax: '',
+    commentCountMin: '',
+    commentCountMax: '',
+    opportunityScoreMin: '',
+    opportunityScoreMax: '',
+    explosionMin: '',
+    explosionMax: '',
+    engagementMin: '',
+    engagementMax: '',
+    searchKeyword: ''
+  });
+
+  // 處理數據，添加分類名稱
+  const processedData = useMemo(() => {
+    if (!data || data.length === 0) return [];
     
-    const categoryMap = {};
-    
-    data.forEach(item => {
-      if (item.categoryId && item.categoryId !== '') {
-        const categoryId = String(item.categoryId).trim();
-        
-        if (CATEGORY_MAPPING[categoryId]) {
-          categoryMap[categoryId] = CATEGORY_MAPPING[categoryId];
-        } else {
-          categoryMap['unknown'] = '無法分類';
-        }
-      }
-    });
-    
-    return Object.entries(categoryMap)
-      .sort(([a], [b]) => {
-        if (a === 'unknown') return 1;
-        if (b === 'unknown') return -1;
-        return parseInt(a) - parseInt(b);
-      })
-      .map(([id, name]) => ({ id, name }));
+    return data.map(video => ({
+      ...video,
+      categoryName: CATEGORY_MAPPING[video.categoryId] || '未知分類',
+      durationLabel: DURATION_LABELS[video.durationCategory] || '未知'
+    }));
   }, [data]);
 
-  // 頻道處理邏輯
-  const channels = useMemo(() => {
-    if (data.length === 0) return [];
+  // 獲取所有分類
+  const categories = useMemo(() => {
+    const categorySet = new Set();
+    processedData.forEach(video => {
+      categorySet.add(video.categoryName);
+    });
     
+    return Array.from(categorySet).map(name => ({
+      id: Object.keys(CATEGORY_MAPPING).find(key => CATEGORY_MAPPING[key] === name) || name,
+      name
+    }));
+  }, [processedData]);
+
+  // 獲取所有頻道
+  const channels = useMemo(() => {
     const channelSet = new Set();
-    data.forEach(item => {
-      if (item.channelTitle && item.channelTitle.trim() !== '') {
-        channelSet.add(item.channelTitle.trim());
+    processedData.forEach(video => {
+      if (video.channelTitle) {
+        channelSet.add(video.channelTitle);
       }
     });
     return Array.from(channelSet).sort();
-  }, [data]);
+  }, [processedData]);
 
-  // 篩選和排序邏輯（不包含分页）
-  const filteredAndSortedData = useMemo(() => {
-    if (data.length === 0) return [];
-    
-    let filtered = [...data];
+  // 檢查數值是否在範圍內
+  const isInRange = (value, min, max) => {
+    const numValue = parseFloat(value);
+    const numMin = min !== '' ? parseFloat(min) : -Infinity;
+    const numMax = max !== '' ? parseFloat(max) : Infinity;
+    return numValue >= numMin && numValue <= numMax;
+  };
 
-    // 分类筛选
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(item => {
-        const categoryId = String(item.categoryId || '').trim();
-        
-        if (selectedCategory === 'unknown') {
-          return !CATEGORY_MAPPING[categoryId] || categoryId === '';
-        } else {
-          return categoryId === selectedCategory;
+  // 應用二次篩選
+  const applySecondaryFilters = (videos) => {
+    return videos.filter(video => {
+      // 關鍵字搜尋
+      if (secondaryFilters.searchKeyword) {
+        const keyword = secondaryFilters.searchKeyword.toLowerCase();
+        const title = (video.title || '').toLowerCase();
+        if (!title.includes(keyword)) {
+          return false;
         }
-      });
-    }
-
-    // 频道筛选
-    if (selectedChannel !== 'all') {
-      filtered = filtered.filter(item => {
-        const channelTitle = String(item.channelTitle || '').trim();
-        return channelTitle === selectedChannel;
-      });
-    }
-
-    // 时长筛选
-    if (durationFilter === 'custom') {
-      // 自定义时长筛选
-      if (customDurationMin || customDurationMax) {
-        filtered = filtered.filter(item => {
-          const durationSeconds = parseInt(item.durationSeconds) || 0;
-          const durationMinutes = durationSeconds / 60;
-          
-          const minMinutes = customDurationMin ? parseFloat(customDurationMin) : 0;
-          const maxMinutes = customDurationMax ? parseFloat(customDurationMax) : Infinity;
-          
-          return durationMinutes >= minMinutes && durationMinutes <= maxMinutes;
-        });
       }
-    } else if (durationFilter !== 'all') {
-      // 预设时长筛选
-      filtered = filtered.filter(item => {
-        const durationCategory = String(item.durationCategory || '').trim();
-        return durationCategory === durationFilter;
-      });
+
+      // 頻道訂閱數篩選
+      if (secondaryFilters.channelSubscribersMin !== '' || secondaryFilters.channelSubscribersMax !== '') {
+        if (!isInRange(video.channelSubscribers, secondaryFilters.channelSubscribersMin, secondaryFilters.channelSubscribersMax)) {
+          return false;
+        }
+      }
+
+      // 頻道總觀看數篩選
+      if (secondaryFilters.channelTotalViewsMin !== '' || secondaryFilters.channelTotalViewsMax !== '') {
+        if (!isInRange(video.channelTotalViews, secondaryFilters.channelTotalViewsMin, secondaryFilters.channelTotalViewsMax)) {
+          return false;
+        }
+      }
+
+      // 頻道影片數量篩選
+      if (secondaryFilters.channelVideoCountMin !== '' || secondaryFilters.channelVideoCountMax !== '') {
+        if (!isInRange(video.channelVideoCount, secondaryFilters.channelVideoCountMin, secondaryFilters.channelVideoCountMax)) {
+          return false;
+        }
+      }
+
+      // 影片觀看數篩選
+      if (secondaryFilters.viewCountMin !== '' || secondaryFilters.viewCountMax !== '') {
+        if (!isInRange(video.viewCount, secondaryFilters.viewCountMin, secondaryFilters.viewCountMax)) {
+          return false;
+        }
+      }
+
+      // 按讚數篩選
+      if (secondaryFilters.likeCountMin !== '' || secondaryFilters.likeCountMax !== '') {
+        if (!isInRange(video.likeCount, secondaryFilters.likeCountMin, secondaryFilters.likeCountMax)) {
+          return false;
+        }
+      }
+
+      // 留言數篩選
+      if (secondaryFilters.commentCountMin !== '' || secondaryFilters.commentCountMax !== '') {
+        if (!isInRange(video.commentCount, secondaryFilters.commentCountMin, secondaryFilters.commentCountMax)) {
+          return false;
+        }
+      }
+
+      // 機會分數篩選
+      if (secondaryFilters.opportunityScoreMin !== '' || secondaryFilters.opportunityScoreMax !== '') {
+        if (!isInRange(video.opportunity_score, secondaryFilters.opportunityScoreMin, secondaryFilters.opportunityScoreMax)) {
+          return false;
+        }
+      }
+
+      // 爆紅潛力篩選
+      if (secondaryFilters.explosionMin !== '' || secondaryFilters.explosionMax !== '') {
+        if (!isInRange(video.explosion, secondaryFilters.explosionMin, secondaryFilters.explosionMax)) {
+          return false;
+        }
+      }
+
+      // 互動指數篩選
+      if (secondaryFilters.engagementMin !== '' || secondaryFilters.engagementMax !== '') {
+        if (!isInRange(video.engagement, secondaryFilters.engagementMin, secondaryFilters.engagementMax)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  };
+
+  // 主要篩選邏輯（保持原有邏輯）
+  const filteredAndSortedData = useMemo(() => {
+    let filtered = [...processedData];
+
+    // 分類篩選
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(video => video.categoryId === selectedCategory);
     }
 
-    // 排序邏輯
-    if (sortOrder === 'custom' && (customSortMin || customSortMax)) {
-      // 自定义范围排序 - 先筛选出符合范围的数据
-      const minVal = customSortMin ? parseFloat(customSortMin) : -Infinity;
-      const maxVal = customSortMax ? parseFloat(customSortMax) : Infinity;
-      
-      filtered = filtered.filter(item => {
-        let val;
-        if (['opportunity_score', 'explosion', 'newbie', 'momentum', 'engagement', 'technical_quality', 'channel_authority'].includes(sortBy)) {
-          val = parseFloat(item[sortBy]) || 0;
-        } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews', 'channelVideoCount', 'durationSeconds'].includes(sortBy)) {
-          val = parseInt(item[sortBy]) || 0;
-        } else if (sortBy === 'publishedAt') {
-          val = item[sortBy] ? new Date(item[sortBy]).getTime() : 0;
-        } else {
-          return true; // 对于字符串类型不做范围筛选
-        }
-        return val >= minVal && val <= maxVal;
-      });
-      
-      // 自定义范围内按降序排列
-      filtered.sort((a, b) => {
-        let aVal, bVal;
-        if (['opportunity_score', 'explosion', 'newbie', 'momentum', 'engagement', 'technical_quality', 'channel_authority'].includes(sortBy)) {
-          aVal = parseFloat(a[sortBy]) || 0;
-          bVal = parseFloat(b[sortBy]) || 0;
-        } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews', 'channelVideoCount', 'durationSeconds'].includes(sortBy)) {
-          aVal = parseInt(a[sortBy]) || 0;
-          bVal = parseInt(b[sortBy]) || 0;
-        } else if (sortBy === 'publishedAt') {
-          aVal = a[sortBy] ? new Date(a[sortBy]).getTime() : 0;
-          bVal = b[sortBy] ? new Date(b[sortBy]).getTime() : 0;
-        } else {
-          aVal = String(a[sortBy] || '').toLowerCase();
-          bVal = String(b[sortBy] || '').toLowerCase();
-        }
-        return typeof aVal === 'number' ? bVal - aVal : bVal.localeCompare(aVal);
-      });
-    } else {
-      // 常规排序
-      filtered.sort((a, b) => {
-        let aVal, bVal;
+    // 頻道篩選
+    if (selectedChannel !== 'all') {
+      filtered = filtered.filter(video => video.channelTitle === selectedChannel);
+    }
+
+    // 時長篩選
+    if (durationFilter !== 'all') {
+      if (durationFilter === 'custom') {
+        const minDuration = customDurationMin ? parseFloat(customDurationMin) : 0;
+        const maxDuration = customDurationMax ? parseFloat(customDurationMax) : Infinity;
+        filtered = filtered.filter(video => {
+          const durationMinutes = video.durationSeconds / 60;
+          return durationMinutes >= minDuration && durationMinutes <= maxDuration;
+        });
+      } else {
+        filtered = filtered.filter(video => video.durationCategory === durationFilter);
+      }
+    }
+
+    // 應用二次篩選
+    filtered = applySecondaryFilters(filtered);
+
+    // 排序
+    filtered.sort((a, b) => {
+      let aValue = a[sortBy];
+      let bValue = b[sortBy];
+
+      // 處理日期
+      if (sortBy === 'publishedAt') {
+        aValue = new Date(aValue);
+        bValue = new Date(bValue);
+      } else {
+        aValue = parseFloat(aValue) || 0;
+        bValue = parseFloat(bValue) || 0;
+      }
+
+      // 自定義範圍篩選
+      if (sortOrder === 'custom') {
+        const minValue = customSortMin ? parseFloat(customSortMin) : -Infinity;
+        const maxValue = customSortMax ? parseFloat(customSortMax) : Infinity;
         
-        if (['opportunity_score', 'explosion', 'newbie', 'momentum', 'engagement', 'technical_quality', 'channel_authority'].includes(sortBy)) {
-          aVal = parseFloat(a[sortBy]) || 0;
-          bVal = parseFloat(b[sortBy]) || 0;
-        } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews', 'channelVideoCount', 'durationSeconds'].includes(sortBy)) {
-          aVal = parseInt(a[sortBy]) || 0;
-          bVal = parseInt(b[sortBy]) || 0;
-        } else if (sortBy === 'publishedAt') {
-          aVal = a[sortBy] ? new Date(a[sortBy]).getTime() : 0;
-          bVal = b[sortBy] ? new Date(b[sortBy]).getTime() : 0;
-        } else {
-          aVal = String(a[sortBy] || '').toLowerCase();
-          bVal = String(b[sortBy] || '').toLowerCase();
-        }
+        const aInRange = aValue >= minValue && aValue <= maxValue;
+        const bInRange = bValue >= minValue && bValue <= maxValue;
         
-        if (sortOrder === 'desc') {
-          return typeof aVal === 'number' ? bVal - aVal : bVal.localeCompare(aVal);
+        if (aInRange && !bInRange) return -1;
+        if (!aInRange && bInRange) return 1;
+        if (!aInRange && !bInRange) return 0;
+      }
+
+      // 正常排序 - 改為預設降序
+      if (sortOrder === 'asc') {
+        return aValue - bValue;
+      } else {
+        return bValue - aValue; // 預設降序
+      }
+    });
+
+    // 如果是自定義範圍，只保留範圍內的數據
+    if (sortOrder === 'custom') {
+      const minValue = customSortMin ? parseFloat(customSortMin) : -Infinity;
+      const maxValue = customSortMax ? parseFloat(customSortMax) : Infinity;
+      
+      filtered = filtered.filter(video => {
+        let value = video[sortBy];
+        if (sortBy === 'publishedAt') {
+          value = new Date(value);
         } else {
-          return typeof aVal === 'number' ? aVal - bVal : aVal.localeCompare(bVal);
+          value = parseFloat(value) || 0;
         }
+        return value >= minValue && value <= maxValue;
       });
     }
 
     return filtered;
-  }, [data, selectedCategory, selectedChannel, durationFilter, customDurationMin, customDurationMax, sortBy, sortOrder, customSortMin, customSortMax]);
+  }, [
+    processedData, 
+    selectedCategory, 
+    selectedChannel, 
+    durationFilter, 
+    customDurationMin, 
+    customDurationMax,
+    sortBy, 
+    sortOrder, 
+    customSortMin, 
+    customSortMax,
+    secondaryFilters
+  ]);
 
-  // 分页数据
+  // 分頁處理
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
     return filteredAndSortedData.slice(startIndex, endIndex);
   }, [filteredAndSortedData, currentPage, pageSize]);
 
-  // 分页信息
+  // 分頁信息
   const paginationInfo = useMemo(() => {
     const totalItems = filteredAndSortedData.length;
     const totalPages = Math.ceil(totalItems / pageSize);
-    
+    const startIndex = (currentPage - 1) * pageSize + 1;
+    const endIndex = Math.min(currentPage * pageSize, totalItems);
+
     return {
       currentPage,
       totalPages,
       pageSize,
       totalItems,
+      startIndex,
+      endIndex,
       hasNextPage: currentPage < totalPages,
-      hasPrevPage: currentPage > 1,
+      hasPrevPage: currentPage > 1
     };
   }, [filteredAndSortedData.length, currentPage, pageSize]);
 
-  // 分页操作函数
-  const handlePageChange = (page) => {
-    if (page >= 1 && page <= paginationInfo.totalPages) {
-      setCurrentPage(page);
-    }
-  };
-
-  const handlePageSizeChange = (newPageSize) => {
-    setPageSize(newPageSize);
-    // 重新计算当前页，确保不超出范围
-    const newTotalPages = Math.ceil(filteredAndSortedData.length / newPageSize);
-    if (currentPage > newTotalPages) {
-      setCurrentPage(Math.max(1, newTotalPages));
-    }
-  };
-
-  // 当筛选条件变化时，重置到第一页
-  const setSelectedCategoryWithReset = (category) => {
-    setSelectedCategory(category);
-    setCurrentPage(1);
-  };
-
-  const setSelectedChannelWithReset = (channel) => {
-    setSelectedChannel(channel);
-    setCurrentPage(1);
-  };
-
-  const setDurationFilterWithReset = (duration) => {
-    setDurationFilter(duration);
-    setCurrentPage(1);
-  };
-
-  const setCustomDurationMinWithReset = (min) => {
-    setCustomDurationMin(min);
-    setCurrentPage(1);
-  };
-
-  const setCustomDurationMaxWithReset = (max) => {
-    setCustomDurationMax(max);
-    setCurrentPage(1);
-  };
-
-  const setCustomSortMinWithReset = (min) => {
-    setCustomSortMin(min);
-    setCurrentPage(1);
-  };
-
-  const setCustomSortMaxWithReset = (max) => {
-    setCustomSortMax(max);
-    setCurrentPage(1);
-  };
-
-  const setSortByWithReset = (sort) => {
-    setSortBy(sort);
-    setCurrentPage(1);
-  };
-
-  const setSortOrderWithReset = (order) => {
-    setSortOrder(order);
-    setCurrentPage(1);
-  };
-
-  // 統計計算（基于完整的筛选数据，不是原始数据）
+  // 統計信息
   const statistics = useMemo(() => {
-    const dataForStats = filteredAndSortedData; // 使用筛选后的数据计算统计
-    
-    if (dataForStats.length === 0) return {
-      totalVideos: 0,
-      totalViews: 0,
-      avgViews: 0,
-      avgOpportunityScore: 0,
-      topScore: 0
-    };
+    if (!processedData.length) return null;
 
-    const totalViews = dataForStats.reduce((sum, item) => {
-      const views = parseInt(item.viewCount) || 0;
-      return sum + views;
-    }, 0);
+    const totalVideos = processedData.length;
+    const filteredVideos = filteredAndSortedData.length;
     
-    const validScores = dataForStats.map(item => {
-      const score = parseFloat(item.opportunity_score) || 0;
-      return score;
-    }).filter(score => score > 0);
+    const totalViews = filteredAndSortedData.reduce((sum, video) => sum + (parseFloat(video.viewCount) || 0), 0);
+    const totalLikes = filteredAndSortedData.reduce((sum, video) => sum + (parseFloat(video.likeCount) || 0), 0);
+    const totalComments = filteredAndSortedData.reduce((sum, video) => sum + (parseFloat(video.commentCount) || 0), 0);
     
-    const avgOpportunityScore = validScores.length > 0 ? 
-      validScores.reduce((sum, score) => sum + score, 0) / validScores.length : 0;
-    const avgViews = dataForStats.length > 0 ? totalViews / dataForStats.length : 0;
-    
+    const avgOpportunityScore = filteredAndSortedData.length > 0 
+      ? filteredAndSortedData.reduce((sum, video) => sum + (parseFloat(video.opportunity_score) || 0), 0) / filteredAndSortedData.length 
+      : 0;
+
+    const uniqueChannels = new Set(filteredAndSortedData.map(video => video.channelTitle)).size;
+
     return {
-      totalVideos: dataForStats.length,
+      totalVideos,
+      filteredVideos,
       totalViews,
-      avgViews: Math.round(avgViews),
-      avgOpportunityScore: avgOpportunityScore.toFixed(1),
-      topScore: validScores.length > 0 ? Math.max(...validScores).toFixed(1) : 0
+      totalLikes,
+      totalComments,
+      avgOpportunityScore,
+      uniqueChannels,
+      filteringActive: filteredVideos < totalVideos
     };
-  }, [filteredAndSortedData]);
+  }, [processedData, filteredAndSortedData]);
+
+  // 頁面控制函數
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
+
+  // 重置分頁當篩選條件改變時
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    selectedCategory, 
+    selectedChannel, 
+    durationFilter, 
+    customDurationMin, 
+    customDurationMax,
+    sortBy, 
+    sortOrder, 
+    customSortMin, 
+    customSortMax,
+    secondaryFilters
+  ]);
 
   return {
-    // 篩選狀態（带重置功能）
+    // 原有的 props
     selectedCategory,
-    setSelectedCategory: setSelectedCategoryWithReset,
+    setSelectedCategory,
     selectedChannel,
-    setSelectedChannel: setSelectedChannelWithReset,
+    setSelectedChannel,
     durationFilter,
-    setDurationFilter: setDurationFilterWithReset,
+    setDurationFilter,
     customDurationMin,
-    setCustomDurationMin: setCustomDurationMinWithReset,
+    setCustomDurationMin,
     customDurationMax,
-    setCustomDurationMax: setCustomDurationMaxWithReset,
+    setCustomDurationMax,
     sortBy,
-    setSortBy: setSortByWithReset,
+    setSortBy,
     sortOrder,
-    setSortOrder: setSortOrderWithReset,
+    setSortOrder,
     customSortMin,
-    setCustomSortMin: setCustomSortMinWithReset,
+    setCustomSortMin,
     customSortMax,
-    setCustomSortMax: setCustomSortMaxWithReset,
+    setCustomSortMax,
     
-    // 分页状态和操作
+    // 新增的二次篩選 props
+    secondaryFilters,
+    setSecondaryFilters,
+    
+    // 數據
+    categories,
+    channels,
+    filteredData: paginatedData,
+    completeFilteredData: filteredAndSortedData,
+    statistics,
+    
+    // 分頁
     currentPage,
     pageSize,
     paginationInfo,
     handlePageChange,
-    handlePageSizeChange,
-    
-    // 處理後的數據
-    categories,
-    channels,
-    filteredData: paginatedData, // 返回分页后的数据（给表格用）
-    completeFilteredData: filteredAndSortedData, // 返回完整的筛选数据（给图表用）
-    statistics
+    handlePageSizeChange
   };
 };

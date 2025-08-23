@@ -1,4 +1,4 @@
-// YouTubeVideoAnalyzer.jsx
+// YouTubeVideoAnalyzer.jsx - 更新版本，新增二次篩選支持
 import React from 'react';
 import { styles } from '../styles/styles.js';
 import { useVideoData } from '../hooks/useVideoData.js';
@@ -6,13 +6,15 @@ import ChartsAnalysis from './ChartsAnalysis.jsx';
 import Header from './Header.jsx';
 import StatisticsOverview from './StatisticsOverview.jsx';
 import FilterControls from './FilterControls.jsx';
+import AdvancedFilterChart from './AdvancedFilterChart.jsx';
 import VideoTable from './VideoTable.jsx';
 
 const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
   console.log('YouTubeVideoAnalyzer 收到的數據:', data?.length || 0, '筆');
   
-  // 視頻數據處理邏輯
+  // 視頻數據處理邏輯（包含新的二次篩選）
   const {
+    // 原有的篩選狀態
     selectedCategory,
     setSelectedCategory,
     selectedChannel,
@@ -31,6 +33,12 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
     setCustomSortMin,
     customSortMax,
     setCustomSortMax,
+    
+    // 新增的二次篩選狀態
+    secondaryFilters,
+    setSecondaryFilters,
+    
+    // 數據
     categories,
     channels,
     currentPage,
@@ -66,9 +74,10 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
           />
         )}
 
-        {/* 篩選控制項 */}
+        {/* 篩選控制項 - 包含新的二次篩選 */}
         {data.length > 0 && (
           <FilterControls
+            // 原有的 props
             categories={categories}
             channels={channels}
             selectedCategory={selectedCategory}
@@ -89,6 +98,18 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
             setCustomSortMin={setCustomSortMin}
             customSortMax={customSortMax}
             setCustomSortMax={setCustomSortMax}
+            
+            // 新增的二次篩選 props
+            secondaryFilters={secondaryFilters}
+            setSecondaryFilters={setSecondaryFilters}
+          />
+        )}
+
+        {/* 進階篩選圖表 */}
+        {data.length > 0 && (
+          <AdvancedFilterChart
+            filteredData={completeFilteredData}
+            secondaryFilters={secondaryFilters}
           />
         )}
 
