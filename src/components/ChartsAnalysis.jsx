@@ -98,31 +98,178 @@ const ChartsAnalysis = ({ data, filteredData, sortBy, sortOrder }) => {
       .map(([name, value]) => ({ name, value }));
   }, [chartData]);
 
-  // 橫條圖數據：分類平均表現
+  // 直條圖數據：分類總觀看數
   const barData = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [];
+
     const categoryStats = {};
     
-    chartData.forEach(item => {
-      const category = getCategoryDisplayName(item.categoryId);
-      const score = parseFloat(item.opportunity_score) || 0;
-      
-      if (!categoryStats[category]) {
-        categoryStats[category] = { scores: [], views: [] };
+    chartData.forEach((item, index) => {
+      let category = '未分類';
+      try {
+        if (item.categoryId) {
+          if (typeof getCategoryDisplayName === 'function') {
+            category = getCategoryDisplayName(item.categoryId) || `分類${item.categoryId}`;
+          } else {
+            category = `分類${item.categoryId}`;
+          }
+        }
+      } catch (e) {
+        category = `分類${item.categoryId || index}`;
       }
       
-      categoryStats[category].scores.push(score);
-      categoryStats[category].views.push(parseInt(item.viewCount) || 0);
+      const views = parseInt(item.viewCount) || 0;
+      
+      if (!categoryStats[category]) {
+        categoryStats[category] = { totalViews: 0, count: 0 };
+      }
+      
+      categoryStats[category].totalViews += views;
+      categoryStats[category].count++;
     });
 
-    return Object.entries(categoryStats)
-      .map(([category, stats]) => ({
-        category,
-        avgScore: (stats.scores.reduce((sum, s) => sum + s, 0) / stats.scores.length).toFixed(1),
-        avgViews: Math.round(stats.views.reduce((sum, v) => sum + v, 0) / stats.views.length),
-        count: stats.scores.length
-      }))
-      .sort((a, b) => b.avgScore - a.avgScore)
-      .slice(0, 10);
+    return Object.keys(categoryStats).map(category => {
+      const stats = categoryStats[category];
+      
+      return {
+        category: category.length > 10 ? category.substring(0, 10) + '...' : category,
+        fullCategory: category,
+        totalViews: stats.totalViews,
+        count: stats.count
+      };
+    })
+    .filter(item => item.count > 0)
+    .sort((a, b) => b.totalViews - a.totalViews)
+    .slice(0, 12);
+  }, [chartData]);
+
+  // 堆疊條形圖數據：分類 × 時長分組觀看數
+  const stackedBarData = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [];
+
+    // 時長解析函數
+    const parseDuration = (duration) => {
+      if (!duration) return 0;
+      
+      // 如果已經是數字，假設是秒數
+      if (typeof duration === 'number') {
+        return duration;
+      }
+      
+      const str = String(duration).trim();
+      
+      // 嘗試解析 HH:MM:SS 或 MM:SS 格式
+      if (str.includes(':')) {
+        const parts = str.split(':').map(p => parseInt(p) || 0);
+        if (parts.length === 3) { // HH:MM:SS
+          return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        } else if (parts.length === 2) { // MM:SS
+          return parts[0] * 60 + parts[1];
+        }
+      }
+      
+      // 嘗試解析純數字（可能是秒數或分鐘數）
+      const num = parseFloat(str);
+      if (!isNaN(num)) {
+        // 如果數字很小（<300），可能是分鐘數，轉換為秒數
+        return num > 300 ? num : num * 60;
+      }
+      
+      return 0;
+    };
+
+    const categoryStats = {};
+    
+    chartData.forEach((item, index) => {
+      let category = '未分類';
+      try {
+        if (item.categoryId) {
+          if (typeof getCategoryDisplayName === 'function') {
+            category = getCategoryDisplayName(item.categoryId) || `分類${item.categoryId}`;
+          } else {
+            category = `分類${item.categoryId}`;
+          }
+        }
+      } catch (e) {
+        category = `分類${item.categoryId || index}`;
+      }
+      
+      const views = parseInt(item.viewCount) || 0;
+      // 優先使用 durationSeconds，如果沒有再用 duration
+      const durationSeconds = item.durationSeconds || parseDuration(item.duration);
+      
+      if (!categoryStats[category]) {
+        categoryStats[category] = { 
+          shortViews: 0, mediumViews: 0, longViews: 0,
+          shortCount: 0, mediumCount: 0, longCount: 0,
+          durations: [] // 用於調試
+        };
+      }
+      
+      // 記錄原始時長用於調試
+      categoryStats[category].durations.push({
+        original: item.duration,
+        durationSeconds: item.durationSeconds,
+        parsed: durationSeconds,
+        category: durationSeconds <= 120 ? '短' : durationSeconds <= 1200 ? '中' : '長'
+      });
+      
+      // 按時長分組
+      if (durationSeconds <= 120) { // ≤2分鐘
+        categoryStats[category].shortViews += views;
+        categoryStats[category].shortCount++;
+      } else if (durationSeconds <= 1200) { // 2-20分鐘
+        categoryStats[category].mediumViews += views;
+        categoryStats[category].mediumCount++;
+      } else { // >20分鐘
+        categoryStats[category].longViews += views;
+        categoryStats[category].longCount++;
+      }
+    });
+
+    // 調試信息：輸出前幾個分類的時長解析結果
+    if (typeof console !== 'undefined' && console.log) {
+      const firstCategory = Object.keys(categoryStats)[0];
+      if (firstCategory && categoryStats[firstCategory].durations.length > 0) {
+        console.log('=== 時長解析調試信息 ===');
+        console.log('分類:', firstCategory);
+        console.log('前5個影片時長:', categoryStats[firstCategory].durations.slice(0, 5));
+        console.log('統計結果:', {
+          短影片: categoryStats[firstCategory].shortCount,
+          中等影片: categoryStats[firstCategory].mediumCount,
+          長影片: categoryStats[firstCategory].longCount
+        });
+        // 檢查原始數據結構
+        if (chartData && chartData[0]) {
+          console.log('原始數據範例:', chartData[0]);
+          console.log('可用的時長相關欄位:', Object.keys(chartData[0]).filter(key => 
+            key.toLowerCase().includes('duration') || 
+            key.toLowerCase().includes('length') ||
+            key.toLowerCase().includes('time')
+          ));
+        }
+      }
+    }
+
+    return Object.keys(categoryStats).map(category => {
+      const stats = categoryStats[category];
+      const totalCount = stats.shortCount + stats.mediumCount + stats.longCount;
+      
+      return {
+        category: category.length > 10 ? category.substring(0, 10) + '...' : category,
+        fullCategory: category,
+        shortViews: stats.shortViews,
+        mediumViews: stats.mediumViews,
+        longViews: stats.longViews,
+        shortCount: stats.shortCount,
+        mediumCount: stats.mediumCount,
+        longCount: stats.longCount,
+        totalCount: totalCount
+      };
+    })
+    .filter(item => item.totalCount > 0)
+    .sort((a, b) => (b.shortViews + b.mediumViews + b.longViews) - (a.shortViews + a.mediumViews + a.longViews))
+    .slice(0, 12);
   }, [chartData]);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff'];
@@ -293,58 +440,191 @@ const ChartsAnalysis = ({ data, filteredData, sortBy, sortOrder }) => {
           </ResponsiveContainer>
         </div>
 
-        {/* 橫條圖：分類平均表現 */}
+        {/* 直條圖：分類總觀看數 */}
         <div style={{...styles.card, gridColumn: '1 / -1'}}>
           <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#111827' }}>
-            📊 分類平均表現橫條圖
+            📊 分類總觀看數直條圖
           </h3>
           <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
-            按平均機會分數排序的分類表現{isFiltered ? '（基於篩選結果）' : ''}
+            按總觀看數排序的分類表現{isFiltered ? '（基於篩選結果）' : ''}（共 {barData.length} 個分類）
           </p>
-          <ResponsiveContainer width="100%" height={Math.max(300, barData.length * 50)}>
-            <BarChart 
-              data={barData}
-              layout="horizontal"
-              margin={{ top: 20, right: 30, left: 100, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis 
-                type="number"
-                stroke="#6b7280"
-              />
-              <YAxis 
-                dataKey="category" 
-                type="category"
-                tick={{fontSize: 12, fill: '#374151'}}
-                width={90}
-              />
-              <Tooltip 
-                formatter={(value, name) => {
-                  if (name === '平均分數') return [value, name];
-                  return [formatNumber(value), name];
-                }}
-                labelFormatter={(label, payload) => {
-                  if (payload && payload[0]) {
-                    const data = payload[0].payload;
-                    return `${data.category} (${data.count} 個影片)`;
-                  }
-                  return label;
-                }}
-                contentStyle={{
-                  backgroundColor: '#fff',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                }}
-              />
-              <Bar 
-                dataKey="avgScore" 
-                fill="#8884d8" 
-                name="平均分數" 
-                radius={[0, 4, 4, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          
+          {barData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart 
+                data={barData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis 
+                  dataKey="category"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis 
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickFormatter={formatNumber}
+                  label={{ value: '總觀看數', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip 
+                  formatter={(value) => [formatNumber(value), '總觀看數']}
+                  labelFormatter={(label, payload) => {
+                    if (payload && payload[0]) {
+                      const data = payload[0].payload;
+                      return `${data.fullCategory} (${data.count} 個影片)`;
+                    }
+                    return label;
+                  }}
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+                <Bar 
+                  dataKey="totalViews" 
+                  fill="#10b981" 
+                  name="總觀看數"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '40px',
+              color: '#6b7280',
+              backgroundColor: '#f9fafb',
+              borderRadius: '8px',
+              border: '2px dashed #d1d5db'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+              <div style={{ fontSize: '16px', fontWeight: '500', marginBottom: '8px' }}>暫無數據</div>
+              <div style={{ fontSize: '14px' }}>請檢查數據格式或篩選條件</div>
+            </div>
+          )}
+        </div>
+
+        {/* 群組條形圖：分類 × 時長分組觀看數 */}
+        <div style={{...styles.card, gridColumn: '1 / -1'}}>
+          <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: '#111827' }}>
+            📊 分類按影片時長分組觀看數分析
+          </h3>
+          <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
+            各分類在不同時長的影片觀看表現{isFiltered ? '（基於篩選結果）' : ''}
+            <br />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '12px', height: '12px', backgroundColor: '#10b981', borderRadius: '2px' }}></span>
+                短影片 (≤2分鐘)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', borderRadius: '2px' }}></span>
+                中等影片 (2-20分鐘)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '12px', height: '12px', backgroundColor: '#f97316', borderRadius: '2px' }}></span>
+                長影片 (>20分鐘)
+              </span>
+            </span>
+          </p>
+          
+          {stackedBarData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart 
+                data={stackedBarData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis 
+                  dataKey="category"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis 
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickFormatter={formatNumber}
+                  label={{ value: '觀看數', angle: -90, position: 'insideLeft' }}
+                />
+                <Tooltip 
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length > 0) {
+                      const data = payload[0].payload;
+                      return (
+                        <div style={{
+                          backgroundColor: '#fff',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '8px',
+                          padding: '12px',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                        }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#111827' }}>
+                            {data.fullCategory} (共 {data.totalCount} 個影片)
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#6b7280', lineHeight: '1.6' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                              <span style={{ width: '8px', height: '8px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
+                              短影片: {formatNumber(data.shortViews)} ({data.shortCount}部)
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                              <span style={{ width: '8px', height: '8px', backgroundColor: '#3b82f6', borderRadius: '50%' }}></span>
+                              中等影片: {formatNumber(data.mediumViews)} ({data.mediumCount}部)
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ width: '8px', height: '8px', backgroundColor: '#f97316', borderRadius: '50%' }}></span>
+                              長影片: {formatNumber(data.longViews)} ({data.longCount}部)
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Legend />
+                <Bar 
+                  dataKey="shortViews" 
+                  fill="#10b981" 
+                  name="短影片 (≤2分鐘)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar 
+                  dataKey="mediumViews" 
+                  fill="#3b82f6" 
+                  name="中等影片 (2-20分鐘)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar 
+                  dataKey="longViews" 
+                  fill="#f97316" 
+                  name="長影片 (>20分鐘)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '40px',
+              color: '#6b7280',
+              backgroundColor: '#f9fafb',
+              borderRadius: '8px',
+              border: '2px dashed #d1d5db'
+            }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+              <div style={{ fontSize: '16px', fontWeight: '500', marginBottom: '8px' }}>暫無數據</div>
+              <div style={{ fontSize: '14px' }}>請檢查數據格式或篩選條件</div>
+            </div>
+          )}
         </div>
       </div>
     </div>
