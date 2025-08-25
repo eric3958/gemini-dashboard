@@ -1,29 +1,112 @@
-// VideoTable.jsx
-import React, { useState } from 'react';
+// VideoTable.jsx - 修改版本，將排序邏輯移到父組件
+import React from 'react';
+import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { styles } from '../styles/styles.js';
-import Pagination from './Pagination.jsx';
-import { 
-  formatNumber, 
-  getScoreColor, 
-  getCategoryDisplayName, 
-  getDurationLabel,
-  getYouTubeUrl,
-  formatDate,
-  formatDuration
-} from '../utils/formatters.js';
 import { CATEGORY_MAPPING } from '../utils/constants.js';
 
-const VideoTable = ({ filteredData, totalDataLength, paginationInfo, onPageChange, onPageSizeChange }) => {
-  if (totalDataLength === 0) {
-    return null;
-  }
+const VideoTable = ({ 
+  filteredData, 
+  totalDataLength, 
+  paginationInfo, 
+  onPageChange, 
+  onPageSizeChange,
+  // 新增：表格排序相關 props
+  tableSortBy,
+  tableSortOrder,
+  onTableSort,
+  onClearTableSort
+}) => {
+  // 可排序的欄位定義
+  const sortableColumns = [
+    { key: 'title', label: '影片標題', width: '300px' },
+    { key: 'channelTitle', label: '頻道名稱', width: '150px' },
+    { key: 'categoryName', label: '分類', width: '120px' },
+    { key: 'publishedAt', label: '發布日期', width: '120px' },
+    { key: 'channelPublishedAt', label: '頻道創立日期', width: '130px' },
+    { key: 'duration', label: '時長', width: '80px' },
+    { key: 'viewCount', label: '觀看數', width: '120px' },
+    { key: 'likeCount', label: '按讚數', width: '100px' },
+    { key: 'commentCount', label: '留言數', width: '100px' },
+    { key: 'channelSubscribers', label: '頻道訂閱數', width: '120px' },
+    { key: 'channelTotalViews', label: '頻道總觀看', width: '120px' },
+    { key: 'opportunity_score', label: '機會分數', width: '100px' },
+    { key: 'explosion', label: '爆紅潛力', width: '100px' },
+    { key: 'engagement', label: '互動指數', width: '100px' }
+  ];
 
-  if (filteredData.length === 0) {
+  // 處理欄位點擊排序
+  const handleColumnSort = (columnKey) => {
+    if (tableSortBy === columnKey) {
+      // 相同欄位：切換排序方向
+      onTableSort(columnKey, tableSortOrder === 'desc' ? 'asc' : 'desc');
+    } else {
+      // 不同欄位：設定新欄位，預設降序
+      onTableSort(columnKey, 'desc');
+    }
+  };
+
+  // 渲染排序圖示
+  const renderSortIcon = (columnKey) => {
+    if (tableSortBy !== columnKey) {
+      return <ChevronsUpDown size={14} style={{ color: '#9ca3af' }} />;
+    }
+    
+    return tableSortOrder === 'desc' 
+      ? <ChevronDown size={14} style={{ color: '#3b82f6' }} />
+      : <ChevronUp size={14} style={{ color: '#3b82f6' }} />;
+  };
+
+  // 格式化數值顯示
+  const formatValue = (value, key) => {
+    if (!value && value !== 0) return '-';
+    
+    switch (key) {
+      case 'publishedAt':
+      case 'channelPublishedAt':
+        return new Date(value).toLocaleDateString('zh-TW');
+      case 'duration':
+        const minutes = Math.floor(value / 60);
+        const seconds = value % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      case 'viewCount':
+      case 'likeCount':
+      case 'commentCount':
+      case 'channelSubscribers':
+      case 'channelTotalViews':
+        return parseInt(value).toLocaleString();
+      case 'opportunity_score':
+      case 'explosion':
+      case 'engagement':
+        return parseFloat(value).toFixed(2);
+      default:
+        return value;
+    }
+  };
+
+  // 獲取分數顏色
+  const getScoreColor = (score, type = 'default') => {
+    const numScore = parseFloat(score);
+    if (isNaN(numScore)) return '#6b7280';
+    
+    if (type === 'opportunity') {
+      if (numScore >= 8) return '#10b981';
+      if (numScore >= 6) return '#f59e0b';
+      return '#ef4444';
+    }
+    
+    if (numScore >= 7) return '#10b981';
+    if (numScore >= 4) return '#f59e0b';
+    return '#ef4444';
+  };
+
+  if (!filteredData || filteredData.length === 0) {
     return (
       <div style={styles.card}>
+        <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>
+          影片資訊
+        </h2>
         <div style={styles.emptyState}>
-          <div style={{fontSize: '18px', marginBottom: '8px'}}>沒有找到符合條件的資料</div>
-          <div style={{fontSize: '14px'}}>請調整篩選條件</div>
+          <p>沒有符合條件的影片資料</p>
         </div>
       </div>
     );
@@ -31,372 +114,287 @@ const VideoTable = ({ filteredData, totalDataLength, paginationInfo, onPageChang
 
   return (
     <div style={styles.card}>
-      <div style={{overflowX: 'auto'}}>
+      {/* 表格標題和排序控制 */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '16px'
+      }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
+          影片資訊
+        </h2>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {tableSortBy && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '4px 8px',
+              backgroundColor: '#dbeafe',
+              borderRadius: '6px',
+              fontSize: '12px',
+              color: '#1d4ed8'
+            }}>
+              <span>排序：{sortableColumns.find(col => col.key === tableSortBy)?.label}</span>
+              <span>({tableSortOrder === 'desc' ? '降序' : '升序'})</span>
+            </div>
+          )}
+          
+          {tableSortBy && (
+            <button
+              onClick={onClearTableSort}
+              style={{
+                ...styles.button,
+                backgroundColor: '#f3f4f6',
+                color: '#374151',
+                fontSize: '12px',
+                padding: '4px 8px'
+              }}
+            >
+              清除排序
+            </button>
+          )}
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px', color: '#6b7280' }}>每頁顯示:</span>
+            <select
+              value={paginationInfo.pageSize}
+              onChange={(e) => onPageSizeChange(parseInt(e.target.value))}
+              style={{
+                ...styles.select,
+                width: '80px',
+                fontSize: '14px'
+              }}
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* 排序說明 */}
+      <div style={{
+        backgroundColor: '#f0f9ff',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        marginBottom: '16px',
+        fontSize: '13px',
+        color: '#0369a1'
+      }}>
+        💡 點擊欄位標題可進行全域排序（對所有篩選資料排序，不僅是當前頁面）
+      </div>
+
+      {/* 資料表格 */}
+      <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>影片資訊</th>
-              <th style={styles.th}>機會分數</th>
-              <th style={styles.th}>觀看數據</th>
-              <th style={styles.th}>互動數據</th>
-              <th style={styles.th}>頻道資訊</th>
-              <th style={styles.th}>發布時間</th>
+              <th style={{ ...styles.th, width: '60px' }}>#</th>
+              {sortableColumns.map(column => (
+                <th
+                  key={column.key}
+                  onClick={() => handleColumnSort(column.key)}
+                  style={{
+                    ...styles.th,
+                    width: column.width,
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    backgroundColor: tableSortBy === column.key ? '#dbeafe' : '#f9fafb',
+                    color: tableSortBy === column.key ? '#1d4ed8' : '#6b7280'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    justifyContent: 'space-between'
+                  }}>
+                    <span>{column.label}</span>
+                    {renderSortIcon(column.key)}
+                  </div>
+                </th>
+              ))}
+              <th style={{ ...styles.th, width: '100px' }}>操作</th>
             </tr>
           </thead>
           <tbody>
-            {filteredData.map((video, index) => (
-              <VideoRow key={video.videoId || index} video={video} />
-            ))}
+            {filteredData.map((video, index) => {
+              const globalIndex = (paginationInfo.currentPage - 1) * paginationInfo.pageSize + index + 1;
+              
+              return (
+                <tr key={video.videoId || index} style={styles.tr}>
+                  <td style={styles.td}>
+                    <span style={{ fontWeight: '500', color: '#374151' }}>
+                      {globalIndex}
+                    </span>
+                  </td>
+                  
+                  <td style={styles.td}>
+                    <div>
+                      <div style={{ 
+                        fontWeight: '500', 
+                        color: '#111827', 
+                        marginBottom: '4px',
+                        lineHeight: '1.4'
+                      }}>
+                        {video.title?.substring(0, 60)}
+                        {video.title?.length > 60 && '...'}
+                      </div>
+                      {video.videoUrl && (
+                        <a
+                          href={video.videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={styles.urlLink}
+                        >
+                          觀看影片
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                  
+                  <td style={styles.td}>{video.channelTitle || '-'}</td>
+                  <td style={styles.td}>{CATEGORY_MAPPING[video.categoryId] || '未知'}</td>
+                  <td style={styles.td}>
+                    {formatValue(video.publishedAt, 'publishedAt')}
+                  </td>
+                  <td style={styles.td}>
+                    {formatValue(video.channelPublishedAt, 'channelPublishedAt')}
+                  </td>
+                  <td style={styles.td}>
+                    {formatValue(video.durationSeconds, 'duration')}
+                  </td>
+                  <td style={styles.td}>
+                    {formatValue(video.viewCount, 'viewCount')}
+                  </td>
+                  <td style={styles.td}>
+                    {formatValue(video.likeCount, 'likeCount')}
+                  </td>
+                  <td style={styles.td}>
+                    {formatValue(video.commentCount, 'commentCount')}
+                  </td>
+                  <td style={styles.td}>
+                    {formatValue(video.channelSubscribers, 'channelSubscribers')}
+                  </td>
+                  <td style={styles.td}>
+                    {formatValue(video.channelTotalViews, 'channelTotalViews')}
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{
+                      ...styles.score,
+                      backgroundColor: `${getScoreColor(video.opportunity_score, 'opportunity')}15`,
+                      color: getScoreColor(video.opportunity_score, 'opportunity')
+                    }}>
+                      {formatValue(video.opportunity_score, 'opportunity_score')}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{
+                      ...styles.score,
+                      backgroundColor: `${getScoreColor(video.explosion)}15`,
+                      color: getScoreColor(video.explosion)
+                    }}>
+                      {formatValue(video.explosion, 'explosion')}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{
+                      ...styles.score,
+                      backgroundColor: `${getScoreColor(video.engagement)}15`,
+                      color: getScoreColor(video.engagement)
+                    }}>
+                      {formatValue(video.engagement, 'engagement')}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    {video.videoUrl && (
+                      <a
+                        href={video.videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          ...styles.button,
+                          backgroundColor: '#dbeafe',
+                          color: '#1d4ed8',
+                          fontSize: '12px',
+                          padding: '4px 8px',
+                          textDecoration: 'none',
+                          display: 'inline-block'
+                        }}
+                      >
+                        查看
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      
-      {/* 分页组件 */}
-      {paginationInfo && paginationInfo.totalItems > 0 && (
-        <Pagination 
-          currentPage={paginationInfo.currentPage}
-          totalPages={paginationInfo.totalPages}
-          pageSize={paginationInfo.pageSize}
-          totalItems={paginationInfo.totalItems}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
-        />
-      )}
-    </div>
-  );
-};
 
-const VideoRow = ({ video }) => {
-  return (
-    <tr style={styles.tr}>
-      <td style={styles.td}>
-        <VideoInfo video={video} />
-      </td>
-      <td style={styles.td}>
-        <ScoreInfo video={video} />
-      </td>
-      <td style={styles.td}>
-        <ViewInfo video={video} />
-      </td>
-      <td style={styles.td}>
-        <InteractionInfo video={video} />
-      </td>
-      <td style={styles.td}>
-        <ChannelInfo video={video} />
-      </td>
-      <td style={styles.td}>
-        <TimeInfo video={video} />
-      </td>
-    </tr>
-  );
-};
-
-// Tags组件
-const TagsDisplay = ({ tags, maxVisible = 3 }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-
-  if (!tags || tags === 'N/A') {
-    return (
-      <div style={tagStyles.noTags}>
-        无标签
-      </div>
-    );
-  }
-
-  // 解析tags字符串
-  const parseTags = (tagsStr) => {
-    if (!tagsStr || tagsStr === 'N/A') return [];
-    
-    // 移除外层引号并按逗号分割
-    return tagsStr
-      .split(',')
-      .map(tag => tag.trim().replace(/^['"]|['"]$/g, ''))
-      .filter(tag => tag.length > 0);
-  };
-
-  const tagList = parseTags(tags);
-  
-  if (tagList.length === 0) {
-    return (
-      <div style={tagStyles.noTags}>
-        无标签
-      </div>
-    );
-  }
-
-  const visibleTags = tagList.slice(0, maxVisible);
-  const hiddenCount = tagList.length - maxVisible;
-
-  const handleMouseEnter = (e) => {
-    if (hiddenCount > 0) {
-      const rect = e.target.getBoundingClientRect();
-      setTooltipPosition({ 
-        x: rect.left + rect.width / 2, 
-        y: rect.top - 10 
-      });
-      setShowTooltip(true);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setShowTooltip(false);
-  };
-
-  return (
-    <div style={tagStyles.container}>
-      <div style={tagStyles.tagsWrapper}>
-        {visibleTags.map((tag, index) => (
-          <span key={index} style={tagStyles.tag}>
-            {tag}
-          </span>
-        ))}
-        {hiddenCount > 0 && (
-          <span 
-            style={tagStyles.moreTag}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-          >
-            +{hiddenCount}
-          </span>
-        )}
-      </div>
-      
-      {showTooltip && hiddenCount > 0 && (
-        <div 
-          style={{
-            ...tagStyles.tooltip,
-            left: tooltipPosition.x,
-            top: tooltipPosition.y,
-          }}
-        >
-          <div style={tagStyles.tooltipContent}>
-            <div style={tagStyles.tooltipTitle}>所有标签 ({tagList.length})</div>
-            <div style={tagStyles.tooltipTags}>
-              {tagList.map((tag, index) => (
-                <span key={index} style={tagStyles.tooltipTag}>
-                  {tag}
-                </span>
-              ))}
-            </div>
+      {/* 分頁控制 */}
+      {paginationInfo.totalPages > 1 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: '16px',
+          borderTop: '1px solid #e5e7eb'
+        }}>
+          <div style={{ fontSize: '14px', color: '#6b7280' }}>
+            顯示 {paginationInfo.startIndex}-{paginationInfo.endIndex} 筆，
+            共 {paginationInfo.totalItems} 筆資料
           </div>
-          <div style={tagStyles.tooltipArrow}></div>
+          
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => onPageChange(paginationInfo.currentPage - 1)}
+              disabled={!paginationInfo.hasPrevPage}
+              style={{
+                ...styles.button,
+                backgroundColor: paginationInfo.hasPrevPage ? '#f3f4f6' : '#f9fafb',
+                color: paginationInfo.hasPrevPage ? '#374151' : '#9ca3af',
+                cursor: paginationInfo.hasPrevPage ? 'pointer' : 'not-allowed',
+                fontSize: '14px'
+              }}
+            >
+              上一頁
+            </button>
+            
+            <span style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '8px 16px',
+              fontSize: '14px',
+              color: '#374151'
+            }}>
+              {paginationInfo.currentPage} / {paginationInfo.totalPages}
+            </span>
+            
+            <button
+              onClick={() => onPageChange(paginationInfo.currentPage + 1)}
+              disabled={!paginationInfo.hasNextPage}
+              style={{
+                ...styles.button,
+                backgroundColor: paginationInfo.hasNextPage ? '#f3f4f6' : '#f9fafb',
+                color: paginationInfo.hasNextPage ? '#374151' : '#9ca3af',
+                cursor: paginationInfo.hasNextPage ? 'pointer' : 'not-allowed',
+                fontSize: '14px'
+              }}
+            >
+              下一頁
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 };
-
-// Tags样式
-const tagStyles = {
-  container: {
-    position: 'relative',
-    marginTop: '6px',
-  },
-  tagsWrapper: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '4px',
-    alignItems: 'center',
-  },
-  tag: {
-    display: 'inline-block',
-    padding: '2px 8px',
-    fontSize: '11px',
-    backgroundColor: '#e0f2fe',
-    color: '#0369a1',
-    borderRadius: '12px',
-    border: '1px solid #bae6fd',
-    whiteSpace: 'nowrap',
-    fontWeight: '500',
-  },
-  moreTag: {
-    display: 'inline-block',
-    padding: '2px 8px',
-    fontSize: '11px',
-    backgroundColor: '#f3f4f6',
-    color: '#6b7280',
-    borderRadius: '12px',
-    border: '1px solid #d1d5db',
-    cursor: 'pointer',
-    fontWeight: '500',
-    transition: 'all 0.2s ease',
-  },
-  noTags: {
-    fontSize: '11px',
-    color: '#9ca3af',
-    fontStyle: 'italic',
-    marginTop: '6px',
-  },
-  tooltip: {
-    position: 'fixed',
-    zIndex: 1000,
-    transform: 'translateX(-50%) translateY(-100%)',
-    pointerEvents: 'none',
-  },
-  tooltipContent: {
-    backgroundColor: '#111827',
-    color: 'white',
-    padding: '12px',
-    borderRadius: '8px',
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-    maxWidth: '300px',
-    minWidth: '200px',
-  },
-  tooltipTitle: {
-    fontSize: '12px',
-    fontWeight: '600',
-    marginBottom: '8px',
-    color: '#e5e7eb',
-  },
-  tooltipTags: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '4px',
-  },
-  tooltipTag: {
-    display: 'inline-block',
-    padding: '2px 6px',
-    fontSize: '10px',
-    backgroundColor: '#374151',
-    color: '#e5e7eb',
-    borderRadius: '10px',
-    whiteSpace: 'nowrap',
-  },
-  tooltipArrow: {
-    position: 'absolute',
-    top: '100%',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    width: 0,
-    height: 0,
-    borderLeft: '6px solid transparent',
-    borderRight: '6px solid transparent',
-    borderTop: '6px solid #111827',
-  }
-};
-
-const VideoInfo = ({ video }) => (
-  <div>
-    <div style={{fontSize: '14px', fontWeight: '500', color: '#111827', maxWidth: '300px'}}>
-      {video.title || '未知標題'}
-    </div>
-    <div style={{marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
-      <span style={{
-        ...styles.badge, 
-        backgroundColor: CATEGORY_MAPPING[String(video.categoryId || '').trim()] ? '#dbeafe' : '#fee2e2',
-        color: CATEGORY_MAPPING[String(video.categoryId || '').trim()] ? '#1e40af' : '#dc2626'
-      }}>
-        {getCategoryDisplayName(video.categoryId)}
-      </span>
-      {video.durationCategory && (
-        <span style={{...styles.badge, backgroundColor: '#f3f4f6', color: '#374151'}}>
-          {getDurationLabel(video.durationCategory)}
-        </span>
-      )}
-    </div>
-    
-    {/* Tags显示 */}
-    <TagsDisplay tags={video.tags} maxVisible={3} />
-    
-    {video.videoId && (
-      <div style={{marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px'}}>
-        <div style={{fontSize: '12px', color: '#6b7280'}}>
-          ID: {video.videoId}
-        </div>
-        <a 
-          href={getYouTubeUrl(video.videoId)} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          style={styles.urlLink}
-          onClick={(e) => e.stopPropagation()}
-        >
-          觀看影片
-        </a>
-      </div>
-    )}
-  </div>
-);
-
-const ScoreInfo = ({ video }) => (
-  <div>
-    <div style={{...styles.score, ...getScoreColor(video.opportunity_score)}}>
-      {(parseFloat(video.opportunity_score) || 0).toFixed(1)}
-    </div>
-    {video.explosion !== undefined && (
-      <div style={{marginTop: '8px', fontSize: '12px', color: '#6b7280'}}>
-        爆紅: {(parseFloat(video.explosion) || 0).toFixed(0)}
-      </div>
-    )}
-    {video.momentum !== undefined && (
-      <div style={{fontSize: '12px', color: '#6b7280'}}>
-        動能: {(parseFloat(video.momentum) || 0).toFixed(0)}
-      </div>
-    )}
-  </div>
-);
-
-const ViewInfo = ({ video }) => (
-  <div>
-    <div style={{display: 'flex', alignItems: 'center', fontSize: '14px', color: '#111827', marginBottom: '4px'}}>
-      <span style={{marginLeft: '8px'}}>{formatNumber(video.viewCount)}</span>
-    </div>
-    {video.channelTotalViews && (
-      <div style={{fontSize: '12px', color: '#6b7280'}}>
-        頻道總觀看: {formatNumber(video.channelTotalViews)}
-      </div>
-    )}
-  </div>
-);
-
-const InteractionInfo = ({ video }) => (
-  <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
-    <div style={{display: 'flex', alignItems: 'center', fontSize: '14px', color: '#6b7280'}}>
-      <span style={{marginLeft: '4px'}}>{formatNumber(video.likeCount)}</span>
-    </div>
-    <div style={{fontSize: '14px', color: '#6b7280'}}>
-      💬 {formatNumber(video.commentCount)}
-    </div>
-    {video.engagement !== undefined && (
-      <div style={{fontSize: '12px', color: '#6b7280'}}>
-        互動率: {(parseFloat(video.engagement) || 0).toFixed(1)}%
-      </div>
-    )}
-  </div>
-);
-
-const ChannelInfo = ({ video }) => (
-  <div>
-    <div style={{fontSize: '14px', fontWeight: '500', color: '#111827'}}>
-      {video.channelTitle || '未知頻道'}
-    </div>
-    <div style={{fontSize: '12px', color: '#6b7280', marginTop: '4px'}}>
-      訂閱者: {formatNumber(video.channelSubscribers)}
-    </div>
-    {video.channelVideoCount && (
-      <div style={{fontSize: '12px', color: '#6b7280'}}>
-        影片數: {formatNumber(video.channelVideoCount)}
-      </div>
-    )}
-    {video.channelId && (
-      <div style={{fontSize: '11px', color: '#9ca3af', marginTop: '2px'}}>
-        頻道ID: {video.channelId.substring(0, 15)}...
-      </div>
-    )}
-  </div>
-);
-
-const TimeInfo = ({ video }) => (
-  <div>
-    <div style={{fontSize: '12px', color: '#6b7280'}}>
-      {formatDate(video.publishedAt)}
-    </div>
-    {video.durationSeconds && (
-      <div style={{fontSize: '12px', color: '#6b7280', marginTop: '4px'}}>
-        時長: {formatDuration(video.durationSeconds)}
-      </div>
-    )}
-  </div>
-);
 
 export default VideoTable;

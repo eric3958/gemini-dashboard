@@ -1,4 +1,4 @@
-// YouTubeVideoAnalyzer.jsx - 更新版本，新增二次篩選支持
+// YouTubeVideoAnalyzer.jsx - 更新版本，支援表格全域排序
 import React from 'react';
 import { styles } from '../styles/styles.js';
 import { useVideoData } from '../hooks/useVideoData.js';
@@ -12,7 +12,7 @@ import VideoTable from './VideoTable.jsx';
 const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
   console.log('YouTubeVideoAnalyzer 收到的數據:', data?.length || 0, '筆');
   
-  // 視頻數據處理邏輯（包含新的二次篩選）
+  // 視頻數據處理邏輯（包含新的表格排序）
   const {
     // 原有的篩選狀態
     selectedCategory,
@@ -37,6 +37,12 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
     // 新增的二次篩選狀態
     secondaryFilters,
     setSecondaryFilters,
+    
+    // 新增的表格排序狀態
+    tableSortBy,
+    tableSortOrder,
+    handleTableSort,
+    clearTableSort,
     
     // 數據
     categories,
@@ -113,13 +119,18 @@ const YouTubeVideoAnalyzer = ({ data, handleFileUpload, isLoading }) => {
           />
         )}
 
-        {/* 數據表格 */}
+        {/* 數據表格 - 新增表格排序支援 */}
         <VideoTable 
           filteredData={filteredData} // 分頁後的資料
           totalDataLength={data.length}
           paginationInfo={paginationInfo}
           onPageChange={handlePageChange}
           onPageSizeChange={handlePageSizeChange}
+          // 新增：表格排序相關 props
+          tableSortBy={tableSortBy}
+          tableSortOrder={tableSortOrder}
+          onTableSort={handleTableSort}
+          onClearTableSort={clearTableSort}
         />
       </div>
     </div>

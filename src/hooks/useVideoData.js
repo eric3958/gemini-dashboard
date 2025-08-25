@@ -1,4 +1,4 @@
-// useVideoData.js - 完整版本，包含二次篩選邏輯
+// useVideoData.js - 修改版本，新增表格排序邏輯
 import { useState, useMemo, useEffect } from 'react';
 import { CATEGORY_MAPPING, DURATION_LABELS } from '../utils/constants.js';
 
@@ -17,6 +17,10 @@ export const useVideoData = (data) => {
   // 分頁狀態
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+
+  // 新增：表格排序狀態（獨立於主排序）
+  const [tableSortBy, setTableSortBy] = useState('');
+  const [tableSortOrder, setTableSortOrder] = useState('desc');
 
   // 新增：二次篩選狀態
   const [secondaryFilters, setSecondaryFilters] = useState({
@@ -163,7 +167,69 @@ export const useVideoData = (data) => {
     });
   };
 
-  // 主要篩選邏輯（保持原有邏輯）
+  // 表格排序函數
+  const applySorting = (videos, sortField, sortDirection) => {
+    if (!sortField) return videos;
+
+    return [...videos].sort((a, b) => {
+      let aValue = a[sortField];
+      let bValue = b[sortField];
+
+      // 處理 null, undefined, 空字串的情況
+      if (aValue == null || aValue === '') aValue = 0;
+      if (bValue == null || bValue === '') bValue = 0;
+
+      // 處理不同類型的數據
+      if (sortField === 'publishedAt' || sortField === 'channelPublishedAt') {
+        aValue = new Date(aValue);
+        bValue = new Date(bValue);
+      } else if (sortField === 'duration') {
+        aValue = parseFloat(a.durationSeconds) || 0;
+        bValue = parseFloat(b.durationSeconds) || 0;
+      } else if (['viewCount', 'likeCount', 'commentCount', 'channelSubscribers', 'channelTotalViews'].includes(sortField)) {
+        // 確保這些數值欄位被當作數字排序
+        aValue = parseInt(aValue) || 0;
+        bValue = parseInt(bValue) || 0;
+      } else if (['opportunity_score', 'explosion', 'engagement'].includes(sortField)) {
+        // 分數類欄位使用浮點數排序
+        aValue = parseFloat(aValue) || 0;
+        bValue = parseFloat(bValue) || 0;
+      } else if (sortField === 'title' || sortField === 'channelTitle' || sortField === 'categoryName') {
+        // 純文字欄位使用字串排序
+        aValue = String(aValue || '').toLowerCase();
+        bValue = String(bValue || '').toLowerCase();
+        return sortDirection === 'desc' 
+          ? bValue.localeCompare(aValue, 'zh-TW')
+          : aValue.localeCompare(bValue, 'zh-TW');
+      } else {
+        // 其他欄位嘗試數值排序，失敗則使用字串排序
+        const aNum = parseFloat(aValue);
+        const bNum = parseFloat(bValue);
+        
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+          // 都是有效數字，使用數值排序
+          aValue = aNum;
+          bValue = bNum;
+        } else {
+          // 包含非數字，使用字串排序
+          aValue = String(aValue || '').toLowerCase();
+          bValue = String(bValue || '').toLowerCase();
+          return sortDirection === 'desc' 
+            ? bValue.localeCompare(aValue, 'zh-TW')
+            : aValue.localeCompare(bValue, 'zh-TW');
+        }
+      }
+
+      // 數值排序（包括日期物件）
+      if (sortDirection === 'desc') {
+        return bValue - aValue;
+      } else {
+        return aValue - bValue;
+      }
+    });
+  };
+
+  // 主要篩選和排序邏輯
   const filteredAndSortedData = useMemo(() => {
     let filtered = [...processedData];
 
@@ -194,55 +260,63 @@ export const useVideoData = (data) => {
     // 應用二次篩選
     filtered = applySecondaryFilters(filtered);
 
-    // 排序
-    filtered.sort((a, b) => {
-      let aValue = a[sortBy];
-      let bValue = b[sortBy];
+    // 先應用主要排序（如果沒有表格排序的話）
+    if (!tableSortBy) {
+      // 主要排序邏輯
+      filtered.sort((a, b) => {
+        let aValue = a[sortBy];
+        let bValue = b[sortBy];
 
-      // 處理日期
-      if (sortBy === 'publishedAt') {
-        aValue = new Date(aValue);
-        bValue = new Date(bValue);
-      } else {
-        aValue = parseFloat(aValue) || 0;
-        bValue = parseFloat(bValue) || 0;
-      }
+        // 處理日期
+        if (sortBy === 'publishedAt' || sortBy === 'channelPublishedAt') {
+          aValue = new Date(aValue);
+          bValue = new Date(bValue);
+        } else {
+          aValue = parseFloat(aValue) || 0;
+          bValue = parseFloat(bValue) || 0;
+        }
 
-      // 自定義範圍篩選
+        // 自定義範圍篩選
+        if (sortOrder === 'custom') {
+          const minValue = customSortMin ? parseFloat(customSortMin) : -Infinity;
+          const maxValue = customSortMax ? parseFloat(customSortMax) : Infinity;
+          
+          const aInRange = aValue >= minValue && aValue <= maxValue;
+          const bInRange = bValue >= minValue && bValue <= maxValue;
+          
+          if (aInRange && !bInRange) return -1;
+          if (!aInRange && bInRange) return 1;
+          if (!aInRange && !bInRange) return 0;
+        }
+
+        // 正常排序 - 改為預設降序
+        if (sortOrder === 'asc') {
+          return aValue - bValue;
+        } else {
+          return bValue - aValue; // 預設降序
+        }
+      });
+
+      // 如果是自定義範圍，只保留範圍內的數據
       if (sortOrder === 'custom') {
         const minValue = customSortMin ? parseFloat(customSortMin) : -Infinity;
         const maxValue = customSortMax ? parseFloat(customSortMax) : Infinity;
         
-        const aInRange = aValue >= minValue && aValue <= maxValue;
-        const bInRange = bValue >= minValue && bValue <= maxValue;
-        
-        if (aInRange && !bInRange) return -1;
-        if (!aInRange && bInRange) return 1;
-        if (!aInRange && !bInRange) return 0;
+        filtered = filtered.filter(video => {
+          let value = video[sortBy];
+          if (sortBy === 'publishedAt' || sortBy === 'channelPublishedAt') {
+            value = new Date(value);
+          } else {
+            value = parseFloat(value) || 0;
+          }
+          return value >= minValue && value <= maxValue;
+        });
       }
+    }
 
-      // 正常排序 - 改為預設降序
-      if (sortOrder === 'asc') {
-        return aValue - bValue;
-      } else {
-        return bValue - aValue; // 預設降序
-      }
-    });
-
-    // 如果是自定義範圍，只保留範圍內的數據
-    if (sortOrder === 'custom') {
-      const minValue = customSortMin ? parseFloat(customSortMin) : -Infinity;
-      const maxValue = customSortMax ? parseFloat(customSortMax) : Infinity;
-      
-      filtered = filtered.filter(video => {
-        let value = video[sortBy];
-        if (sortBy === 'publishedAt') {
-          value = new Date(value);
-        } else {
-          value = parseFloat(value) || 0;
-        }
-        return value >= minValue && value <= maxValue;
-      });
+    // 應用表格排序（優先於主排序）
+    if (tableSortBy) {
+      filtered = applySorting(filtered, tableSortBy, tableSortOrder);
     }
 
     return filtered;
@@ -257,7 +331,9 @@ export const useVideoData = (data) => {
     sortOrder, 
     customSortMin, 
     customSortMax,
-    secondaryFilters
+    secondaryFilters,
+    tableSortBy,
+    tableSortOrder
   ]);
 
   // 分頁處理
@@ -315,6 +391,19 @@ export const useVideoData = (data) => {
     };
   }, [processedData, filteredAndSortedData]);
 
+  // 表格排序控制函數
+  const handleTableSort = (columnKey, order) => {
+    setTableSortBy(columnKey);
+    setTableSortOrder(order);
+    setCurrentPage(1); // 排序後回到第一頁
+  };
+
+  const clearTableSort = () => {
+    setTableSortBy('');
+    setTableSortOrder('desc');
+    setCurrentPage(1);
+  };
+
   // 頁面控制函數
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
@@ -341,6 +430,15 @@ export const useVideoData = (data) => {
     secondaryFilters
   ]);
 
+  // 當表格排序改變時，清除主排序的自定義範圍
+  useEffect(() => {
+    if (tableSortBy && sortOrder === 'custom') {
+      setSortOrder('desc');
+      setCustomSortMin('');
+      setCustomSortMax('');
+    }
+  }, [tableSortBy]);
+
   return {
     // 原有的 props
     selectedCategory,
@@ -365,6 +463,12 @@ export const useVideoData = (data) => {
     // 新增的二次篩選 props
     secondaryFilters,
     setSecondaryFilters,
+    
+    // 新增的表格排序 props
+    tableSortBy,
+    tableSortOrder,
+    handleTableSort,
+    clearTableSort,
     
     // 數據
     categories,
